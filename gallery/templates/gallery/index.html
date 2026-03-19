@@ -1,0 +1,183 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>3D Storage</title>
+    <script type = "importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    {% load static %}
+    {% load gallery_extras %}
+    <link rel="stylesheet" href="{% static 'gallery/style.css' %}">
+</head>
+<body>
+
+    <!-- Блок уведомлений -->
+     {% if messages %}
+     <div class = "message-container">
+        {% for message in messages %}
+            <div class="message {{ message.tags }}">
+                {{ message }}
+            </div>
+        {% endfor %}
+     </div>
+    {% endif %}
+
+    <header>
+        <h1>{{ page_title }}</h1>
+        <!-- Ссылка на загрузку теперь выглядит как кнопка -->
+        <a href="{% url 'upload' %}" class="btn" style="background-color: #28a745;">+Загрузить модель</a>
+    </header>
+
+    <!-- Блок поиска и фильтров -->
+     <div class="toolbar">
+        <form action="{% url 'home' %}" method="get" style="display: flex; width: 100%; gap: 10px; align-items: center;">
+            {# скрытый инпут, чтобы параметр days не сбрасывался при поиске/сортировке #}
+            {% if request.GET.days %}
+                <input type="hidden" name="days" value="{{ request.GET.days }}">
+            {% endif %}
+
+            <input type='text' name = 'q' class="search-input"
+                   placeholder="Поиск 3D моедели по названию..." 
+                   value="{{ request.GET.q|default:'' }}">
+
+            <select name = "ordering" class = "sort-select" onchange="this.form.submit()">
+                <option value="new" {% if request.GET.ordering == 'new' %}selected{% endif %}>Сначала новые</option>
+                <option value="old" {% if request.GET.ordering == 'old' %}selected{% endif %}>Сначала старые</option>
+                <option value="name" {% if request.GET.ordering == 'name' %}selected{% endif %}>По имени (А-Я)</option>
+            </select>
+
+            <button type="submit" class="search-btn">Найти</button>
+
+            {% if request.GET.q or request.GET.ordering or request.GET.days %}
+               <a href="{% url 'home' %}" class="reset-link">✖ Сбросить</a>
+            {% endif %}
+
+            {# ссылка на фильтрацию по дате #}
+            <div style="margin-left: 20px;">
+                {% if request.GET.days == '1' %}
+                    {# уже действует фильтр – предложить сброс #}
+                    <a href="{% url 'home' %}?{% if request.GET.q %}q={{ request.GET.q }}&{% endif %}{% if request.GET.ordering %}ordering={{ request.GET.ordering }}&{% endif %}" class="reset-link">✖ Снять фильтр даты</a>
+                {% else %}
+                    <a href="{% url 'home' %}?days=1{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if request.GET.ordering %}&ordering={{ request.GET.ordering }}{% endif %}" class="filter-link">Только за сегодня</a>
+                {% endif %}
+            </div>
+
+        </form>
+    </div>
+
+    <main>
+        <div class="gallery-grid">
+            {% for asset in page_obj %}
+               <div class="asset-card">
+                <!-- 1.Контейнер с Превью (Верхняя часть) -->
+                   <div class="card-preview js-load-3d"
+                        id="model-container-{{ asset.id }}"
+                        data-url="{{ asset.file.url }}"
+                        {% if asset.image %}
+                            style="background-image: url('{{ asset.image.url }}');"
+                            data-thumb="{{ asset.image.url }}"
+                        {% endif %}
+                        >
+
+                        {% if asset.image %}
+                            <!-- Play button will be drawn with CSS (pseudo-element) -->
+                            <div class="play-btn">▶</div>
+                        {% else %}
+                            <span style="font-size: 2rem;">🎲</span>
+                        {% endif %}
+                   </div>
+                <!-- 2. Контейнер с Информация (Нижняя часть) -->
+                 <div class="card-info">
+                    <h3 class="card-title">{{ asset.title }}</h3>
+
+                    <div class="card-meta">
+                        <span>📅 {{ asset.created_at|date:"d M Y" }}</span>
+                        {% if asset.file %}
+                            <span style="float: right;">💾 {{ asset.file.size|filesizeformat }}</span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Кнопка скачивания -->
+                    {% if asset.file %}
+                        <a href="{{ asset.file.url }}" class="btn" style="background-color: #007bff; margin-top: 10px;">Скачать</a>
+                    {% else %}
+                        span style="color: red;">Файл потерян</span>
+                    {% endif %}
+                 </div>
+               </div>
+               {% empty %}
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                        {% if request.GET.q %}
+                            <h3>По запросу "<b>{{ request.GET.q }}</b>" ничего не найдено 🕵️</h3>
+                            <p>Попробуйте изменить запрос или <a href = "{% url 'home' %}">сбросить фильтры</a></p>
+                        {% else %}
+                            <h3>База пуста</h3>
+                            <p>Загрузите первую модель!</p>
+                        {% endif %}
+                    </div>
+                <p>База пуста</p>
+                {% endfor %}
+        </div>
+
+        <!-- Пагинация -->
+         <div class="pagination">
+            <span class="step-links">
+                {% if page_obj.has_previous %}
+                    <a href="?{% param_replace request page=1 %}">&laquo; Первая</a>
+                    <a href="?{% param_replace request page=page_obj.previous_page_number %}">Назад</a>"
+                {% endif %}
+
+                <span class="current">
+                    Страница {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}
+                </span>
+
+                {% if page_obj.has_next %}
+                    <a href="?{% param_replace request page=page_obj.next_page_number %}">Далее</a>
+                    <a href="?{% param_replace request page=page_obj.paginator.num_pages%}">Последняя &raquo;</a>
+                {% endif %}
+            </span>
+
+         </div>
+
+    </main>
+
+    <footer>
+        <p>&copy; 2026 Web Structures Course</p>
+    </footer>
+    <script type="module">
+        //Импорт
+        import { loadModel } from "{% static 'gallery/js/viewer.js' %}";
+
+        const containers = document.querySelectorAll('.js-load-3d');
+
+        containers.forEach(container => {
+
+            // запомним начальный HTML (фон и кнопка) для возвращения после закрытия
+            if (!container.dataset.originalHtml) {
+                container.dataset.originalHtml = container.innerHTML;
+            }
+
+            container.addEventListener('click', function(){
+
+                if(this.querySelector('canvas')) return; // Если Canvas уже есть
+
+                this.innerHTML = ''; // Очистить содержимое для загрузки Canvas
+
+            const id = this.id;
+            const url = this.dataset.url;
+
+            if (url) {
+                console.log("Загружаю 3D по требованию:", url);
+                loadModel(id, url);
+            }
+            });
+        });
+    </script>
+</body>
